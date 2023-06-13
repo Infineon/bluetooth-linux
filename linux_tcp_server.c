@@ -98,7 +98,10 @@ void InitializeRpc(void)
     pthread_t thread_address;
 
     // Create a thread to read HCI packets from the host via a TCP socket. Give it time to start.
-    pthread_create(&thread_address, NULL, rpcReceiveThread, NULL);
+    if (pthread_create(&thread_address, NULL, rpcReceiveThread, NULL) < 0)
+    {
+        WICED_BT_TRACE_CRIT("pthread_create for rpcReceiveThread failed\n");
+    }
 }
 
 static void *rpcReceiveThread(void *p)

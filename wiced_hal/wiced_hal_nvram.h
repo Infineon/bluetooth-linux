@@ -53,14 +53,18 @@
  * @brief Defines the first usable NVRAM Volatile Section Identifier.
  * Application can use the VS ids starting from WICED_NVRAM_VSID_START.
  **/
+#ifndef WICED_NVRAM_VSID_START
 #define WICED_NVRAM_VSID_START      0x0200
+#endif
 
 /**
  * @brief Defines the last usable NVRAM Volatile Section Identifier.
  * Application can use the VS ids starting from WICED_NVRAM_VSID_START to
  * WICED_NVRAM_VSID_END
  **/
+#ifndef WICED_NVRAM_VSID_END
 #define WICED_NVRAM_VSID_END        0x3FFF
+#endif
 
 /*****************************************************************************
 **                          Function Declarations

@@ -53,7 +53,21 @@ extern uint32_t config_VS_Delete (uint16_t config_item_id);
  ****************************************************************************/
 
 /**
- * Writes the data to NVRAM
+ * Writes the data to NVRAM,
+ *
+ * @param[in] vs_id        : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[in] data_length  : Length of the data to be written to the NVRAM,
+ *                           Application can only write up to 255 bytes
+ *
+ * @param[in] p_data       : Pointer to the data to be written to the NVRAM
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
+ *
+ * @return  number of bytes written, 0 on error
  */
 uint16_t write_nvram_utility( uint16_t vs_id,
             uint16_t         data_length,
@@ -74,8 +88,20 @@ uint16_t write_nvram_utility( uint16_t vs_id,
     return written;
 }
 
-/**
- * Reads the data from NVRAM
+/** Reads the data from NVRAM
+ *
+ * @param[in]  vs_id       : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[in]  data_length : Length of the data to be read from NVRAM
+ *
+ * @param[out] p_data      : Pointer to the buffer to which data will be copied
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
+ *
+ * @return  the number of bytes read, 0 on failure
  */
 uint16_t read_nvram_utility( uint16_t vs_id,
         uint16_t         data_length,
@@ -97,7 +123,16 @@ uint16_t read_nvram_utility( uint16_t vs_id,
 }
 
 /**
+ * Delete the data from NVRAM
+ * 
  * Delete the NVRAM data at specified VS id
+ *
+ * @param[in] vs_id        : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
  */
 void delete_nvram_utility( uint16_t vs_id, wiced_result_t * p_status)
 {
@@ -114,6 +149,25 @@ void delete_nvram_utility( uint16_t vs_id, wiced_result_t * p_status)
 }
 
 /* WICED applications call the below APIs. WICED applications allowed to operate vs ids range WICED_NVRAM_VSID_START to WICED_NVRAM_VSID_END */
+/**
+ * Writes the data to NVRAM,
+ * Application can write up to 255 bytes in one VS  id section
+ *
+ * @param[in] vs_id        : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[in] data_length  : Length of the data to be written to the NVRAM,
+ *                           Application can only write up to 255 bytes
+ *
+ * @param[in] p_data       : Pointer to the data to be written to the NVRAM
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
+ *
+ *
+ * @return  number of bytes written, 0 on error
+ */
 uint16_t wiced_hal_write_nvram( uint16_t vs_id,
         uint16_t        data_length,
         uint8_t        * p_data,
@@ -132,6 +186,21 @@ uint16_t wiced_hal_write_nvram( uint16_t vs_id,
     return write_nvram_utility( vs_id, data_length, p_data, p_status );
 }
 
+/** Reads the data from NVRAM
+ *
+ * @param[in]  vs_id       : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[in]  data_length : Length of the data to be read from NVRAM
+ *
+ * @param[out] p_data      : Pointer to the buffer to which data will be copied
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
+ *
+ * @return  the number of bytes read, 0 on failure
+ */
 uint16_t wiced_hal_read_nvram( uint16_t vs_id,
         uint16_t        data_length,
         uint8_t        * p_data,
@@ -149,6 +218,17 @@ uint16_t wiced_hal_read_nvram( uint16_t vs_id,
     return read_nvram_utility( vs_id, data_length, p_data, p_status );
 }
 
+/**
+ * Delete the data from NVRAM
+ *
+ * @param[in] vs_id        : Volatile Section Identifier. Application can use
+ *                           the VS ids from WICED_NVRAM_VSID_START to
+ *                           WICED_NVRAM_VSID_END
+ *
+ * @param[out] p_status    : Pointer to location where status of the call
+ *                           is returned
+ *
+ */
 void wiced_hal_delete_nvram ( uint16_t vs_id, wiced_result_t * p_status )
 {
     if ( ( vs_id < WICED_NVRAM_VSID_START ) ||

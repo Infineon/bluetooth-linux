@@ -65,6 +65,7 @@
 #include <linux/gpio.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
+#include <sys/poll.h>
 
 
 extern wiced_bt_stack_platform_t btu_platform_interfaces;
@@ -85,13 +86,14 @@ uint32_t patch_baud_rate = DEFAULT_PATCH_BAUD_RATE;
 #define MAX_PATH 256
 #define DEBUG_ERROR_MSG "[ERROR]:"
 #define GPIO_MAX_NAME_SIZE 32
+#define INFITIME -1
 
 uint8_t PATCH_FILE_NAME[MAX_PATH + 1] = "";
 
 pthread_t timer_thread;
 pthread_mutex_t lock  = PTHREAD_MUTEX_INITIALIZER;;
 pthread_cond_t schedParamInit = PTHREAD_COND_INITIALIZER;
-
+pthread_t gpioThread;
 
 static uint64_t           absTimeHi = 0;
 static uint64_t           TargetTimeToWake = 0;
@@ -511,7 +513,7 @@ void* timerTask(void *t)
         curAbsTime      = absTimeHi + last_tc;
 
 
-
+        linux_stack_lock(NULL);
         if (TargetTimeToWake != 0)
         {
             if (TargetTimeToWake <= curAbsTime)
@@ -526,7 +528,7 @@ void* timerTask(void *t)
         }
         else
             sleepTime = 60000;        // 1 minute is small enough to detect rollovers
-
+        linux_stack_unlock(NULL);
 
 
         sleepTime = (uint32_t) sleepTime / 1000; //in seconds
@@ -543,7 +545,9 @@ void* timerTask(void *t)
 
         if (sleepTime == 0)
         {
+            linux_stack_lock(NULL);
             wiced_bt_process_timer();
+            linux_stack_unlock(NULL);
         }
     }
     return NULL;
@@ -558,8 +562,10 @@ static uint64_t GetuSTicks64 (void)
 /* Sets target time in us */
 static void SetExpireTargetTime (uint64_t targetTime)
 {
+    linux_stack_lock(NULL);
     TargetTimeToWake = (targetTime/1000);
     SetEvent ();
+    linux_stack_unlock(NULL);
 }
 
 wiced_result_t SendScoToBtHCI (uint8_t *pData, uint8_t len)
@@ -616,7 +622,10 @@ void ProcessEventFromHCI (uint8_t *pData, uint32_t length)
     /* Safety check in case data is received before the stack is initialized (USB) */
     if (btu_platform_interfaces.stack_lock.pf_lock_func == NULL)
         return;
+
+    linux_stack_lock(NULL);
     wiced_bt_process_hci_events(pData, length);
+    linux_stack_unlock(NULL);
 }
 
 void ProcessAclFromHCI (uint8_t *pData, uint32_t length)
@@ -625,7 +634,9 @@ void ProcessAclFromHCI (uint8_t *pData, uint32_t length)
     if (btu_platform_interfaces.stack_lock.pf_lock_func == NULL)
         return;
 
+    linux_stack_lock(NULL);
     wiced_bt_process_acl_data(pData, length);
+    linux_stack_unlock(NULL);
 }
 
 void ProcessIsocFromHCI (uint8_t *pData, uint32_t length)
@@ -633,7 +644,9 @@ void ProcessIsocFromHCI (uint8_t *pData, uint32_t length)
     if (btu_platform_interfaces.stack_lock.pf_lock_func == NULL)
         return;
 
+    linux_stack_lock(NULL);
     wiced_bt_process_isoc_data(pData, length);
+    linux_stack_unlock(NULL);
 }
 
 void ProcessDiagFromHCI (uint8_t *pData, uint32_t length)
@@ -649,13 +662,15 @@ void ProcessDiagFromHCI (uint8_t *pData, uint32_t length)
 
     if (EDR_LMP_RECV == pData[0])
     {
-
+        linux_stack_lock(NULL);
         TraceHciPkt(SPY_TRACE_TYPE_LMP_RECV, &pData[1], length - 1, wicedx_emulator_instance);
+        linux_stack_unlock(NULL);
     }
     else if (EDR_LMP_XMIT == pData[0])
     {
-
+        linux_stack_lock(NULL);
         TraceHciPkt(SPY_TRACE_TYPE_LMP_XMIT, &pData[1], length - 1, wicedx_emulator_instance);
+        linux_stack_unlock(NULL);
     }
     else
         return;
@@ -669,7 +684,9 @@ void ProcessScoFromHCI(uint8_t *pData, uint32_t length)
     /* Safety check in case data is received before the stack is initialized (USB) */
     if (btu_platform_interfaces.stack_lock.pf_lock_func == NULL) return;
 
+    linux_stack_lock(NULL);
     wiced_bt_process_sco_data(pData, length);
+    linux_stack_unlock(NULL);
 }
 
 /////////////////////////////////////////////////
@@ -930,12 +947,43 @@ void SendSpyClearTraces(void)
     return;
 }
 
-static void linux_stack_lock(void * pv_ctx)
+/*******************************************************************************
+** Function     linux_stack_lock
+**
+** Description  this funciton implement a mutex lock of cs_mutex,
+**              cs_mutex is a recursive mutex set in init_stack_lock().
+**              this function also as a real mutex lock protection of btstack if btstack enable lock.
+**              so in order to avoid race condition and deadlock, use this recursive mutex api for btstack
+**              and linux CE, every time when CE call btstack api should lock first, and unlock after api complete.
+**
+** Param:
+**    void *pv_ctx
+**          this parameter will send from btstack, inorder to align btstack, need it although we did not use it 
+** Return:
+**    void
+*******************************************************************************/
+void linux_stack_lock(void * pv_ctx)
 {
     pthread_mutex_lock( &cs_mutex );
 }
 
-static void linux_stack_unlock(void* pv_ctx)
+/*******************************************************************************
+** Function     linux_stack_unlock
+**
+** Description  this funciton implement a mutex unlock of cs_mutex.
+**              cs_mutex is a recursive mutex set in init_stack_lock().
+**              this function also as a real mutex unlock protection of btstack if btstack enable lock
+**              so in order to avoid race condition and deadlock, use this recursive mutex api for btstack
+**              and linux CE, every time when CE call btstack api should lock first, and unlock after api complete.
+**
+** Param:
+**    void *pv_ctx
+**          this parameter will send from btstack , inorder to align btstack, need it although we did not use it 
+**
+** Return:
+**    void
+*******************************************************************************/
+void linux_stack_unlock(void* pv_ctx)
 {
     pthread_mutex_unlock( &cs_mutex );
 }
@@ -995,4 +1043,134 @@ void wait_controller_reset_ready(void)
 {
     // The reset after update baudrate
     wait_controller_reset();
+}
+
+/*******************************************************************************
+** Function         platform_gpio_write
+**
+** Description      This function is the interface of cy_platform_gpio_write
+** 
+** Param:
+**	dev_name:	gpiochipx
+**	offset:		gpio num or offset
+**	value:		1 or 0
+**	str:	        the gpio name for user input	
+** Return:
+**	BOOL32:		write result
+**
+*******************************************************************************/
+BOOL32 platform_gpio_write(const char *dev_name, const char* offset, uint8_t value, char *str)
+{
+    return cy_platform_gpio_write(dev_name, offset, value, str); 
+}
+
+/*******************************************************************************
+**
+** Function         cy_platform_gpio_poll
+**
+** Description      This function will poll the specific gpio event,
+** 		    detect the gpio rising event or falling event,
+** 		    thread will block in poll
+** 		    after event occur, run the callback
+** 
+** Param:
+**	void *info:
+**             it is cybt_gpio_event_t *args
+**
+** Return:
+**	void *	
+**
+*******************************************************************************/
+static void* cy_platform_gpio_poll(void *info)
+{
+    int fd = 0, ret = 0;
+    int offset = 0;
+    struct gpioevent_request event_req = {0};
+    struct gpioevent_data event_data = {0};
+    struct pollfd poll_fd;
+    cybt_gpio_event_t *args = info;
+
+    if (args == NULL)
+    {
+        debug_PrintError("[%s]:Error, args is NULL\n", __FUNCTION__);
+    }
+    offset = atoi(args->gpio_event.line_num);
+
+    // /dev/gpiochip0
+    char dev_gpio[CYHAL_GPIO_BUFFER_SIZE] = "/dev/";
+    strncat(dev_gpio, args->gpio_event.p_gpiochip, CYHAL_GPIO_BUFFER_SIZE - strlen(dev_gpio) - 1);
+
+    fd = open(dev_gpio, O_RDONLY);
+    if (fd < 0)
+    {
+        debug_PrintError("[%s]:Unabled to open %s: %s\n", __FUNCTION__, dev_gpio, strerror(errno));
+        return NULL;
+    }
+    /* event request */
+    event_req.lineoffset = offset;
+    event_req.handleflags = GPIOHANDLE_REQUEST_INPUT;
+    event_req.eventflags = args->gpio_event_flag;
+
+    ret = ioctl(fd, GPIO_GET_LINEEVENT_IOCTL, &event_req);
+    if (ret == -1)
+    {
+        debug_PrintError("[%s]:Unable to get line event using ioctl : %s\n", __FUNCTION__, strerror(errno));
+        close(fd); 
+        return NULL;
+    }
+    if (close(fd) == -1)
+    {
+        debug_PrintError("[%s]:Failed to close GPIO character device file: %s\n",__FUNCTION__, strerror(errno));
+        return NULL;
+    }
+
+    poll_fd.fd = event_req.fd;
+    poll_fd.events = POLLIN;
+
+    debug_Printf("[%s]:POLL GPIO %d on %s\n", __FUNCTION__, offset, args->gpio_event.p_gpiochip);
+    ret = poll(&poll_fd, 1, INFITIME);
+
+    event_data.timestamp = 0;
+    event_data.id = 0;
+
+    // must read out event 
+    ret = read(event_req.fd, &event_data, sizeof(event_data));
+    if (ret == -1)
+    {
+        debug_PrintError("[%s]:read event error:%s\n",__FUNCTION__, strerror(errno));
+    }
+
+    // close event req fd
+    close(event_req.fd);
+    if (args->gpio_event_cb != NULL)
+    {
+        args->gpio_event_cb();
+    } else {
+        debug_PrintError("[%s]:NO CALLBACK assign\n",__FUNCTION__);
+    }
+
+    return NULL;
+}
+
+/*******************************************************************************
+**
+** Function         platform_gpio_poll
+**
+** Description      This function create a thread to run cy_platform_gpio_poll
+**
+** Param:
+**	cybt_gpio_event_t *gpio_event_args
+**
+** Return:
+**	BOOL32:	    result
+**
+*******************************************************************************/
+BOOL32 platform_gpio_poll(cybt_gpio_event_t *gpio_event_args)
+{
+    if (pthread_create(&gpioThread, NULL, cy_platform_gpio_poll, (void*)gpio_event_args) < 0)
+    {
+        debug_PrintError("[%s]:pthread_create failed\n", __FUNCTION__);
+        return FALSE;
+    }
+    return TRUE;
 }

@@ -49,6 +49,8 @@
 #include "hcidefs.h"
 #include "wiced_bt_types.h"
 #include <unistd.h>
+#include <sys/time.h>
+#include <assert.h>
 #include "wiced_result.h"
 #include "data_types.h"
 #include "wiced_bt_stack_platform.h"
@@ -61,6 +63,7 @@ pthread_mutex_t mutex_controller_reset = PTHREAD_MUTEX_INITIALIZER;
 
 #define tBTM_VSC_CMPL wiced_bt_dev_vendor_specific_command_complete_params_t
 #define BTE_PRM_FORMAT_HCD    0x01
+#define PATCH_DOWNLOAD_TIMEOUT_SEC 20 //FW donwload timeout
 
 enum
 {
@@ -281,8 +284,21 @@ static void update_baudrate_cback (tBTM_VSC_CMPL* p)
  *******************************************************************************/
 void wait_controller_reset (void)
 {
+    int err = 0;
+    struct timespec timewait = {0};
+    struct timeval now = {0};
+
+    gettimeofday(&now, NULL);
+    timewait.tv_nsec = 0;
+    timewait.tv_sec = now.tv_sec + PATCH_DOWNLOAD_TIMEOUT_SEC;
+
     pthread_mutex_lock(&mutex_controller_reset);
-    pthread_cond_wait(&cond_controller_reset, &mutex_controller_reset);
+    err = pthread_cond_timedwait(&cond_controller_reset, &mutex_controller_reset, &timewait);
+    if (err != 0){
+        debug_Printf("FW download Timeout Fail! err:%d\n", err);
+        fflush(stdout);
+        assert(0);
+    }
     pthread_mutex_unlock(&mutex_controller_reset);
 }
 

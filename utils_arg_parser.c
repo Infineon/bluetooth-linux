@@ -50,6 +50,7 @@
 #include "utils_arg_parser.h"
 
 
+
 /******************************************************************************
  *                                MACROS
  *****************************************************************************/
@@ -65,6 +66,10 @@ extern void debug_PrintError(const char* format, ... );
  ***************************************************************************/
 static void stream_to_bdaddr( uint8_t *a, uint8_t *p );
 static void print_usage( char *p_app_name );
+static int parse_gpio(int *idx, char **argv, char *gpiochip, char *line_num);
+static BOOL32 isDigit(char *line);
+
+char app_name[MAX_PATH]; /* Application name */
 
 /****************************************************************************
  *                              FUNCTION DEFINITIONS
@@ -190,12 +195,18 @@ int arg_parser_get_args( int argc,
                         uint8_t *is_socket_tcp,
                         char* patchFile,
                         uint32_t *patch_baud,
-                        cybt_controller_autobaud_config_t *p_autobaud_cfg )
+                        cybt_controller_gpio_config_t *p_gpio_cfg)
 {
-    char app_name[MAX_PATH]; /* Application name */
     unsigned int len = 0; /* Application name length */
     char local_bda_string[50]; /* Local BD address string */
     unsigned char r_exist = 0, p_exist = 0;
+    if (p_gpio_cfg == NULL) 
+    {
+        debug_PrintError( "gpio cfg is NULL.\n" );
+        return PARSE_ERROR;
+    }
+    cybt_controller_autobaud_config_t *p_autobaud_cfg = &p_gpio_cfg->autobaud_cfg;
+    cybt_gpio_wake_on_ble_t *p_wake_on_ble_cfg = &p_gpio_cfg->wake_on_ble_cfg;
 
     p_autobaud_cfg->use_ioctl = 0;
     memset( p_autobaud_cfg->bt_reg_on_off.line_num, 0, sizeof( p_autobaud_cfg->bt_reg_on_off.line_num ) );
@@ -340,44 +351,62 @@ int arg_parser_get_args( int argc,
         case 'S': /* TCP Socket for BTSPY connection */
             *is_socket_tcp = 1;
             break;
-
-        case 'R' :  /* BT REG ON path of gpiochip ie. /dev/gpiochipX and  pin number */
+        case 'N' :  /* use ioctl */
+            p_autobaud_cfg->use_ioctl = 1;
+            break;
+        case 'R' :  /* BT REG of gpiochip and pin number(offset) */
+        case 'H' :  /* BT HOST-WAKE path of gpiochip ie. /dev/gpiochipX and  pin number */
+        case 'W' :  /* BT DEV-WAKE path of gpiochip ie. /dev/gpiochipX and  pin number */
             if (argc >= (i + 3))
             {
-                if(strlen(argv[++i]) > CYHAL_GPIOCHIP_NAME_SIZE)
-                {   
-                    debug_PrintError("GPIO chip name is too long.\n" );
+                if (strstr(argv[i+1], "gpiochip") == NULL || isDigit(argv[i+2]) == WICED_FALSE)
+                {
+                    debug_PrintError("BT parsing %s %s %s\n", argv[i], argv[i+1], argv[i+2]);
                     print_usage( app_name );
                     return PARSE_ERROR;
                 }
-                strncpy(p_autobaud_cfg->bt_reg_on_off.p_gpiochip, argv[i], CYHAL_GPIOCHIP_NAME_SIZE - 1);
-
-                if(strlen(argv[++i]) > CYHAL_GPIO_LINENUM_SIZE)
+                char *p_gpiochip = NULL;
+                char *p_line_num = NULL;
+                char gpiochip[CYHAL_GPIOCHIP_NAME_SIZE] = {0};
+                char line_num[CYHAL_GPIO_LINENUM_SIZE] = {0};
+                switch ( toupper( argv[i][1] ) )
                 {
-                    debug_PrintError("GPIO number is too long.\n" );
+                    case 'R':
+                        p_gpiochip = p_autobaud_cfg->bt_reg_on_off.p_gpiochip;
+                        p_line_num = p_autobaud_cfg->bt_reg_on_off.line_num;
+                        r_exist = 1;
+                        break;
+                    case 'H':
+                        p_gpiochip = p_wake_on_ble_cfg->host_wake_args.gpio_event.p_gpiochip;
+                        p_line_num = p_wake_on_ble_cfg->host_wake_args.gpio_event.line_num;
+                        break;
+                    case 'W':
+                        p_gpiochip = p_wake_on_ble_cfg->dev_wake.p_gpiochip;
+                        p_line_num = p_wake_on_ble_cfg->dev_wake.line_num;
+                        break;
+                }
+                if (parse_gpio(&i, argv, gpiochip, line_num) == PARSE_ERROR)
+                {
+                    print_usage( app_name );
                     return PARSE_ERROR;
                 }
-                strncpy(p_autobaud_cfg->bt_reg_on_off.line_num, argv[i], CYHAL_GPIO_LINENUM_SIZE - 1);
-
-                if(strlen(p_autobaud_cfg->bt_reg_on_off.p_gpiochip) + strlen(p_autobaud_cfg->bt_reg_on_off.line_num) > CYHAL_GPIO_BUFFER_SIZE - CYHAL_GPIO_FIXED_STR_SIZE)
+                if(p_gpiochip != NULL && p_line_num != NULL)
                 {
-                    debug_PrintError("GPIO buffer is not enough.\n" );
+                    memcpy(p_gpiochip, gpiochip, strlen(gpiochip));
+                    memcpy(p_line_num, line_num, strlen(line_num));
+                } else {
+                    print_usage( app_name );
                     return PARSE_ERROR;
                 }
-                r_exist = 1;
             }
             else
             {
-                debug_PrintError("BT REG ON-OFF line not found in Command line options.\n");
+                debug_PrintError("BT GPIO line not found in Command line options.\n");
                 print_usage( app_name );
                 return PARSE_ERROR;
             }
             break;
-
-        case 'N' :  /* use ioctl */
-            p_autobaud_cfg->use_ioctl = 1;
-            break;
-        }
+	}
     }
     if(r_exist)
     {
@@ -386,5 +415,74 @@ int arg_parser_get_args( int argc,
             return PARSE_ERROR;
         }
     }
+
     return PARSE_SUCCESS;
+}
+
+/******************************************************************************
+ * Function Name: parse_gpio()
+ ******************************************************************************
+ * Summary:
+ *   parse the user input gpio name and line number 
+ *
+ * Parameters:
+ *   int *i:         index of argv
+ *   char **argv:    argv from main, include user input parameter at command line
+ *   char *gpiochip: gpiochip name
+ *   char *lin_num:  gpiochip offset
+ *
+ * Return:
+ *   int : 
+ *       PARSE_ERROR 
+ *       PARSE_SUCCESS 
+ *
+ *****************************************************************************/
+static int parse_gpio(int *idx, char **argv, char *gpiochip, char *line_num)
+{
+    if(strlen(argv[++(*idx)]) > CYHAL_GPIOCHIP_NAME_SIZE)
+    {
+        debug_PrintError("GPIO chip name is too long.\n" );
+        return PARSE_ERROR;
+    }
+    strncpy(gpiochip, argv[*idx], CYHAL_GPIOCHIP_NAME_SIZE - 1);
+
+    if(strlen(argv[++(*idx)]) > CYHAL_GPIO_LINENUM_SIZE)
+    {
+        debug_PrintError("GPIO number is too long.\n" );
+        return PARSE_ERROR;
+    }
+    strncpy(line_num, argv[*idx], CYHAL_GPIO_LINENUM_SIZE - 1);
+
+    if(strlen(gpiochip) + strlen(line_num) > CYHAL_GPIO_BUFFER_SIZE - CYHAL_GPIO_FIXED_STR_SIZE)
+    {
+        debug_PrintError("GPIO buffer is not enough.\n" );
+        return PARSE_ERROR;
+    }
+    return PARSE_SUCCESS;
+}
+
+/*
+* Function Name: isDigit()
+ ******************************************************************************
+ * Summary:
+ *   check the user input gpio line numer is digit
+ *
+ * Parameters:
+ *   char *line:  gpiochip offset
+ *
+ * Return:
+ *   BOOL32:
+ *         WICED_TRUE
+ *         WICED_FALSE
+*/
+static BOOL32 isDigit(char *line)
+{
+    for(int i = 0; i < strlen(line); i++)
+    {
+        if(isdigit(line[i]) == WICED_FALSE)
+        {
+            return WICED_FALSE;
+        }
+    }
+    return WICED_TRUE;
 }

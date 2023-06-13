@@ -42,6 +42,7 @@
 #define PLTFRM_LINUX_H
 
 #include "wiced_bt_types.h"
+#include "data_types.h"
 
 #define DEFAULT_PATCH_BAUD_RATE 115200
 #define DEFAULT_APP_BAUD_RATE 115200
@@ -58,6 +59,8 @@
 #define CYHAL_GPIOCHIP_NAME_SIZE    30
 #define CYHAL_GPIO_LINENUM_SIZE     10
 
+typedef void (*gpio_event_cb_t)();
+
 typedef struct
 {
     char p_gpiochip[CYHAL_GPIOCHIP_NAME_SIZE];  /**< gpio chip name i.e. gpiochip0 */
@@ -65,11 +68,41 @@ typedef struct
 }cyhal_gpio_t;
 
 /** GPIO configuration to put the device in autobaud mode */
-typedef struct{
+typedef struct
+{
     cyhal_gpio_t                    bt_reg_on_off;      /**< BT reg_on_off pin */
     uint8_t                         use_ioctl;          /* To use ioctl */
 }cybt_controller_autobaud_config_t;
 
+/*
+*   GPIO EVENT and EVENT CALLBACK
+*/
+typedef struct gpio_event_args
+{
+    cyhal_gpio_t 	gpio_event;       /* which gpio we want monitor */
+    gpio_event_cb_t 	gpio_event_cb;    /* the callback function when gpio event occure  */
+    uint32_t		gpio_event_flag;  /* what event we want, there are 3 types: GPIOEVENT_REQUEST_RISING_EDGE, GPIOEVENT_REQUEST_FALLING_EDGE, GPIOEVENT_REQUEST_BOTH_EDGES   */
+}cybt_gpio_event_t;
+
+/*
+*   FOR WAKE ON BLE USE
+*   DEV-WAKE:  host to Controller
+*   HOST-WAKE: controller event for Host
+*/
+typedef struct gpio_wake_on_ble
+{
+    cyhal_gpio_t 	dev_wake;
+    cybt_gpio_event_t 	host_wake_args;
+}cybt_gpio_wake_on_ble_t;
+
+/*
+*   PLATFORM GPIO CONFIG
+*/
+typedef struct
+{
+    cybt_controller_autobaud_config_t autobaud_cfg;
+    cybt_gpio_wake_on_ble_t wake_on_ble_cfg;
+}cybt_controller_gpio_config_t;
 
 
 /*******************************************************************************
@@ -103,5 +136,11 @@ void configure_spy_tcp(char *peer_ip_addr);
 void wiced_bt_platform_interface_init(void);
 
 void wait_controller_reset_ready(void);
+
+BOOL32 platform_gpio_write(const char *dev_name, const char* offset, uint8_t value, char *str);
+BOOL32 platform_gpio_poll(cybt_gpio_event_t *args);
+void linux_stack_lock(void *);
+void linux_stack_unlock(void *);
+
 
 #endif //PLTFRM_LINUX_H

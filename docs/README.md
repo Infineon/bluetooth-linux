@@ -60,6 +60,10 @@ then passes the event/data to btstack using which does further processing.
 
    The porting layer library is generated under the *build* folder: **liblinux_stack_porting_layer.a**.
 
+## Linux Audio
+   * `linux-audio` folder contains the ALSA lib header and the pre-build dynamic library for ARM64 and copy from GitHub [alsa-lib](https://github.com/alsa-project/alsa-lib)
+   * This part is for Linux platform speaker and mic control using.
+   * you can go the [ALSA project](https://www.alsa-project.org/wiki/ALSA_Library_API) GitHub for getting more information.
 
 ## Additional Information
 For Bluetooth Host Stack Library APIs, refer to the [BLE API reference manual](https://infineon.github.io/btstack/ble/api_reference_manual/html/index.html).

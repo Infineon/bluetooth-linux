@@ -123,9 +123,8 @@ uint8_t HexDigits( char *p );
 **
 **     patch_baud: Chip patch firmware download BaudRate.
 **
-**     p_autobaud_cfg: For GPIO control ex: hatchet2 autobaud mode should trigger RegON GPIO
+**     p_gpio_cfg: For GPIO control: ex: hatchet2 autobaud mode should trigger RegON GPIO
 **
-**     
 ** Returns          TRUE if success otherwise FALSE.
 **
 *******************************************************************************/
@@ -139,7 +138,7 @@ int arg_parser_get_args( int argc,
                         uint8_t *is_socket_tcp,
                         char* patchFile,
                         uint32_t *patch_baud,
-                        cybt_controller_autobaud_config_t *p_autobaud_cfg );
+                        cybt_controller_gpio_config_t *p_gpio_cfg);
 
 uint32_t checkAppBaudRate(uint32_t uBaudRate);
 
